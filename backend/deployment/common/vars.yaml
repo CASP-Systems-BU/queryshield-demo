@@ -1,0 +1,79 @@
+# General configuration
+# job_id: job1  # job_id will be input by json
+checkpoint_file: "{{ log_dir }}/checkpoint" # used to track progress
+deployment_machine_public_key: "{{ lookup('file', '/home/ubuntu/.ssh/id_rsa.pub') }}"
+custom_startup_script: |
+  #!/bin/bash
+
+  # Check if user "tva" exists
+  if ! id "tva" &>/dev/null; then
+    # create new user "tva"
+    # because different cloud providers have different default username
+    adduser --disabled-password --gecos "" tva
+    # echo 'tva:password' | chpasswd
+    echo 'tva ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+    usermod -aG sudo tva
+  fi
+
+  # Create .ssh directory if it doesn't exist
+  mkdir -p /home/tva/.ssh
+  chown tva:tva /home/tva/.ssh
+  chmod 700 /home/tva/.ssh
+
+  # Generate SSH key pair for tva user if it doesn't exist
+  if [ ! -f "/home/tva/.ssh/id_rsa" ]; then
+      sudo -u tva ssh-keygen -t rsa -b 2048 -f /home/tva/.ssh/id_rsa -q -N ""
+      chown tva:tva /home/tva/.ssh/id_rsa*
+  fi
+
+  # find the only user folder under /home
+  if [ ! -f "/home/tva/.ssh/authorized_keys" ]; then
+    default_user_dir=$(find /home -mindepth 1 -maxdepth 1 -type d -not -name "tva" -print -quit)
+    if [ -n "$default_user_dir" ] && [ -f "$default_user_dir/.ssh/authorized_keys" ]; then
+        cp "$default_user_dir/.ssh/authorized_keys" /home/tva/.ssh/
+        chown tva:tva /home/tva/.ssh/authorized_keys
+        chmod 700 /home/tva/.ssh
+    fi
+  fi
+
+  # Add provided public key to authorized_keys
+  echo "{{ deployment_machine_public_key }}" >> /home/tva/.ssh/authorized_keys
+  chown tva:tva /home/tva/.ssh/authorized_keys
+  chmod 600 /home/tva/.ssh/authorized_keys
+
+
+# AWS configuration
+aws_instance_num: 1
+aws_instance_name: "mpc-demo-{{ job_id }}-aws"
+aws_region: YOUR_AWS_REGION
+aws_image: ami-0c160f611113a1ec6  # mpc-demo-credit-score-image2
+aws_instance_type: r5.xlarge
+aws_key_name: mpc-demo-key
+aws_security_group_id: YOUR_AWS_SECURITY_GROUP_ID # mpc-demo-allow-all-traffic
+aws_ssh_private_key_file: YOUR_SSH_PRIVATE_KEY_FILE_PATH
+
+# GCP configuration
+gcp_instance_num: 1
+gcp_instance_name: "mpc-demo-{{ job_id }}-gcp"
+gcp_project: YOUR_GCP_PROJECT_ID # project id
+gcp_zone: YOUR_GCP_ZONE
+gcp_image: projects/secrecy-326917/global/images/mpc-demo-credit-score-image2
+# gcp_machine_type: n2-highmem-4
+gcp_machine_type: n2-highmem-2
+gcp_cred_file: YOUR_GCP_CREDENTIAL_FILE
+gcp_ssh_public_key: "{{ deployment_machine_public_key }}"  # use the same ssh key as the deployment machine
+gcp_ssh_private_key_file: /home/ubuntu/.ssh/id_rsa
+
+# Azure configuration
+azure_instance_num: 1
+azure_instance_name: "mpc-demo-{{ job_id }}-azure"
+azure_pip_name: "mpc-demo-pip-{{ job_id }}"
+azure_nic_name: "mpc-demo-nic-{{ job_id }}"
+azure_resource_group: YOUR_AZURE_RESOURCE_GROUP
+azure_location: YOUR_AZURE_LOCATION
+# azure_network_interface_name: "mpc-demo-nic"
+# azure_vm_size: "Standard_D4s_v3"
+azure_vm_size: "Standard_D2s_v3"
+azure_subscription_id: YOUR_AZURE_SUBSCRIPTION_ID
+azure_image_name: "mpc-demo-credit-score-image"
+azure_image_version: "0.0.3"

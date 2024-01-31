@@ -1,0 +1,34 @@
+########################################################
+- name: Start Deploying TVA Core
+  hosts: cluster
+  gather_facts: no
+  remote_user: tva
+  vars_files:
+    - vars.yaml 
+  
+  tasks:
+  # built in ansible git doesn't auto use the machine's ssh to download.
+  # This is a simpler workaround.
+    - name: Download code base from git
+      git: 
+        repo: https://github.com/CASP-Systems-BU/tva.git
+        dest: ~/tva
+      retries: 3
+      delay: 5
+
+    - name: Setup necessary environment for running tva
+      shell: 'bash ./scripts/setup.sh > setup.log'
+      args:
+        chdir: ~/tva
+      async: 6000  # maximum running time (seconds)
+      poll: 0     # don't wait until finished
+      register: setup_script
+
+    - name: Check setup script status
+      async_status:
+        jid: "{{ setup_script.ansible_job_id }}"
+      register: job_result
+      until: job_result.finished
+      retries: 300
+      delay: 20
+

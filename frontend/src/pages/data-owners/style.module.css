@@ -1,0 +1,47 @@
+.search {
+	display: flex;
+	flex-direction: row;
+	width: 30%;
+	margin: 2rem 0;
+}
+
+.uploadDataContainer {
+	width: 75%;
+	margin: 0 auto;
+	text-align: center;
+	margin-bottom: 5vh;
+}
+.spreadsheet {
+	overflow-x: scroll;
+	width: 100%;
+	height: 200px;
+}
+
+.csvInput {
+	margin: 0 auto;
+	width: max-content;
+}
+
+.errorMessage {
+	color: red;
+	width: max-content;
+	text-align: center;
+}
+
+.errorMessageHeader {
+	color: red;
+}
+
+#errorUploadMessage {
+	color: red;
+}
+
+#successUploadMessage {
+	color: green;
+}
+
+.errorsList {
+	margin-left: auto;
+	margin-right: auto;
+	width: fit-content; /* or a specific width */
+}

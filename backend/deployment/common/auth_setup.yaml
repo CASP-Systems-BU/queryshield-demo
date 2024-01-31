@@ -1,0 +1,264 @@
+##################################################
+- name: Prepare Temp Authorized_keys File
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    # - name: Delete old authorized_keys file
+    #   file:
+    #     path: ../common/authorized_keys
+    #     state: absent
+
+    - name: Create new authorized_keys file template
+      template:
+        src: ../common/authorized_keys_temp
+        dest: ../tmp_config/{{ job_id }}/authorized_keys
+      become: yes
+
+##################################################
+- name: Get SSH Public Keys From AWS machines
+  hosts: aws_cluster
+  gather_facts: no
+  remote_user: tva
+  vars_files:
+    - vars.yaml 
+  vars:
+    ansible_ssh_private_key_file: "{{ aws_ssh_private_key_file }}"
+
+  tasks:
+  - name: Wait for user-data script finished
+    pause:
+      seconds: 30
+
+  - name: Retrieve SSH public key from each machine
+    shell: cat ~/.ssh/id_rsa.pub
+    register: ssh_pub_key
+
+  - name: Add SSH public key to localhost's authorized_keys
+    lineinfile:
+      path: ../tmp_config/{{ job_id }}/authorized_keys
+      line: "{{ ssh_pub_key.stdout }}"
+      create: yes
+    delegate_to: localhost
+    become: no
+
+##################################################
+- name: Get SSH Public Keys From Azure machines
+  hosts: azure_cluster
+  gather_facts: no
+  remote_user: tva
+  vars_files:
+    - vars.yaml
+  vars:
+    ansible_ssh_private_key_file: "{{ gcp_ssh_private_key_file }}"
+
+  tasks:
+    # - name: Wait for user-data script finished
+    #   pause:
+    #     seconds: 30
+
+    - name: Retrieve SSH public key from each machine
+      shell: cat ~/.ssh/id_rsa.pub
+      register: ssh_pub_key
+
+    - name: Add SSH public key to localhost's authorized_keys
+      lineinfile:
+        path: ../tmp_config/{{ job_id }}/authorized_keys
+        line: "{{ ssh_pub_key.stdout }}"
+        create: yes
+      delegate_to: localhost
+      become: no
+
+##################################################
+- name: Get SSH Public Keys From GCP machines
+  hosts: gcp_cluster
+  gather_facts: no
+  remote_user: tva
+  vars_files:
+    - vars.yaml
+  vars:
+    ansible_ssh_private_key_file: "{{ gcp_ssh_private_key_file }}"
+
+  tasks:
+    # - name: Wait for user-data script finished
+    #   pause:
+    #     seconds: 30
+
+    - name: Retrieve SSH public key from each machine
+      shell: cat ~/.ssh/id_rsa.pub
+      register: ssh_pub_key
+
+    - name: Add SSH public key to localhost's authorized_keys
+      lineinfile:
+        path: ../tmp_config/{{ job_id }}/authorized_keys
+        line: "{{ ssh_pub_key.stdout }}"
+        create: yes
+      delegate_to: localhost
+      become: no
+
+##################################################
+- name: Distribute Auth Files To AWS machines
+  hosts: aws_cluster
+  gather_facts: no
+  remote_user: tva
+  vars_files:
+    - vars.yaml 
+  vars:
+    ansible_ssh_private_key_file: "{{ aws_ssh_private_key_file }}"
+    authorized_keys_file: "../tmp_config/{{ job_id }}/authorized_keys"
+
+
+  tasks:
+  # - name: Wait for user-data script finished
+  #   pause:
+  #     seconds: 30
+  - name: Read local authorized_keys file
+    slurp:
+      src: "{{ authorized_keys_file }}"
+    register: local_authorized_keys
+    delegate_to: localhost
+    run_once: true
+
+  - name: Append public keys to remote authorized_keys
+    lineinfile:
+      path: ~/.ssh/authorized_keys
+      line: "{{ item }}"
+      state: present
+      create: yes
+    loop: "{{ (local_authorized_keys['content'] | b64decode).split('\n') }}"
+    when: local_authorized_keys['content'] | b64decode
+
+  - name: Add StrictHostKeyChecking=no to ssh config
+    copy:
+      src: ../common/config
+      dest: ~/.ssh/config
+      owner: tva
+      mode: u=rw,g=r,o=r
+    vars:
+      ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    # become: yes
+    register: task_result
+    until: task_result is succeeded
+    retries: 3
+    delay: 30
+
+  - name: Add hosts file to cluster
+    copy:
+      src: ../tmp_config/{{ job_id }}/hosts_file_tva
+      dest: /etc/hosts
+    become: yes
+
+###############################################################
+- name: Distribute Auth Files To GCP machines
+  hosts: gcp_cluster
+  gather_facts: no
+  remote_user: tva
+  vars_files:
+    - vars.yaml 
+  vars:
+    ansible_ssh_private_key_file: "{{ gcp_ssh_private_key_file }}"
+    authorized_keys_file: "../tmp_config/{{ job_id }}/authorized_keys"
+
+  tasks:
+  # - name: Wait for user-data script finished
+  #   pause:
+  #     seconds: 30
+  
+  - name: Read local authorized_keys file
+    slurp:
+      src: "{{ authorized_keys_file }}"
+    register: local_authorized_keys
+    delegate_to: localhost
+    run_once: true
+
+  - name: Append public keys to remote authorized_keys
+    lineinfile:
+      path: ~/.ssh/authorized_keys
+      line: "{{ item }}"
+      state: present
+      create: yes
+    loop: "{{ (local_authorized_keys['content'] | b64decode).split('\n') }}"
+    when: local_authorized_keys['content'] | b64decode
+
+  - name: Add StrictHostKeyChecking=no to ssh config
+    copy:
+      src: ../common/config
+      dest: ~/.ssh/config
+      owner: tva
+      mode: u=rw,g=r,o=r
+    vars:
+      ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    # become: yes
+    register: task_result
+    until: task_result is succeeded
+    retries: 3
+    delay: 30
+
+  - name: Add hosts file to cluster
+    copy:
+      src: ../tmp_config/{{ job_id }}/hosts_file_tva
+      dest: /etc/hosts
+    become: yes
+
+###############################################################
+- name: Distribute Auth Files To Azure machines
+  hosts: azure_cluster
+  gather_facts: no
+  remote_user: tva
+  vars_files:
+    - vars.yaml 
+  vars:
+    ansible_ssh_private_key_file: "{{ gcp_ssh_private_key_file }}"
+    authorized_keys_file: "../tmp_config/{{ job_id }}/authorized_keys"
+
+  tasks:
+  # - name: Wait for user-data script finished
+  #   pause:
+  #     seconds: 30
+  
+  - name: Read local authorized_keys file
+    slurp:
+      src: "{{ authorized_keys_file }}"
+    register: local_authorized_keys
+    delegate_to: localhost
+    run_once: true
+
+  - name: Append public keys to remote authorized_keys
+    lineinfile:
+      path: ~/.ssh/authorized_keys
+      line: "{{ item }}"
+      state: present
+      create: yes
+    loop: "{{ (local_authorized_keys['content'] | b64decode).split('\n') }}"
+    when: local_authorized_keys['content'] | b64decode
+
+  - name: Add StrictHostKeyChecking=no to ssh config
+    copy:
+      src: ../common/config
+      dest: ~/.ssh/config
+      owner: tva
+      mode: u=rw,g=r,o=r
+    vars:
+      ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    # become: yes
+    register: task_result
+    until: task_result is succeeded
+    retries: 3
+    delay: 30
+
+  - name: Add hosts file to cluster
+    copy:
+      src: ../tmp_config/{{ job_id }}/hosts_file_tva
+      dest: /etc/hosts
+    become: yes
+
+##################################################
+- name: Change hostnames for machines
+  hosts: localhost
+  tasks:
+  - name: Change hostnames for machines
+    shell: 
+      ssh -o StrictHostKeyChecking=no tva@{{item}} "sudo hostnamectl set-hostname machine-wan-{{idx+1}}"
+    loop: "{{ combined_hosts }}"
+    loop_control:
+      index_var: idx

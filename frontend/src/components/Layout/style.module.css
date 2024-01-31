@@ -1,0 +1,40 @@
+.sidebar {
+	background-color: #e2ede4;
+	padding: 2vw;
+	height: 100%;
+	width: 20vw;
+	position: fixed;
+	top: 0;
+	left: 0;
+	font-size: 1.1rem;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+}
+
+.navItem {
+	display: flex;
+	flex-direction: row;
+	justify-content: flex-start;
+	align-items: center;
+	margin: 1rem 0;
+	gap: 0;
+}
+
+.signout {
+	position: absolute;
+	bottom: 30px;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+}
+
+.sidebarText {
+	display: none;
+	flex-grow: 0;
+}
+
+.signoutIcon {
+	font-size: 24px;
+	margin-right: 0.5rem;
+}
