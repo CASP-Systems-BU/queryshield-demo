@@ -1,0 +1,20 @@
+########################### ALl #############################
+- name: Download input secret shares to machines
+  hosts: cluster
+  gather_facts: no
+  remote_user: tva
+  vars_files:
+    - vars.yaml
+
+  tasks:
+    - name: Run agent.py script to download secret shares
+      shell: >
+        source /etc/environment && 
+        python3 ~/agent.py {{ job_id }} download ~/input_shares.csv
+      register: script_output
+      args:
+        executable: /bin/bash
+
+    - name: Output result of script execution
+      ansible.builtin.debug:
+        msg: "The script executed with the following output: {{ script_output.stdout }}"

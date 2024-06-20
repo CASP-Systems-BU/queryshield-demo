@@ -1,0 +1,11 @@
+.containerStyle {
+	background: #f0f0f0; /* Gray background */
+	border-radius: 8px; /* Rounded corners */
+	padding: 16px; /* Padding for content */
+	overflow-x: auto; /* Enable horizontal scrolling if needed */
+}
+
+.codeStyle {
+	white-space: pre-wrap; /* Preserve white spaces and wrap lines */
+	font-family: monospace; /* Use a monospaced font for code */
+}

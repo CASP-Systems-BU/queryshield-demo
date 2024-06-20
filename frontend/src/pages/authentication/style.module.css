@@ -1,0 +1,40 @@
+.outterContainer {
+	margin: auto;
+}
+
+.welcomeContainer {
+	width: 50%;
+	border-radius: 6px;
+	padding: 2%;
+	display: flex;
+	flex-direction: column;
+}
+
+.checkboxContainer {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	justify-content: space-between;
+}
+
+.signupContainer {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+}
+
+.centeredContainer {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	width: 100%;
+}
+
+.formContainer {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+}

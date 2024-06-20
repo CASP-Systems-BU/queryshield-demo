@@ -1,0 +1,42 @@
+- name: Running TVA on Node 1
+  hosts: machine_1_host
+  remote_user: tva
+  gather_facts: no
+  vars:
+    exec_name: "medical_3pc"
+    root_folder: secrecy-private
+    exec_path: "/home/tva/{{ root_folder }}/build/{{ exec_name }}"
+
+  tasks:
+    - name: Fetch combined_hosts fact from localhost
+      set_fact:
+        combined_hosts: "{{ hostvars['localhost']['combined_hosts'] }}"
+
+    - name: Ensure destination directory and copy execution file using scp
+      shell: >
+        # if ssh -o StrictHostKeyChecking=no tva@{{ item }} "[ ! -e {{ exec_path }} ]"; then
+          ssh -o StrictHostKeyChecking=no tva@{{ item }} "mkdir -p ~/{{ root_folder }}/build"
+          scp -o StrictHostKeyChecking=no {{ exec_path }} tva@{{ item }}:{{ exec_path }}
+        # fi
+      loop: "{{ combined_hosts }}"
+
+    - name: Run Medical Experiment
+      shell: |
+        mpirun --host machine-wan-1,machine-wan-2,machine-wan-3 -np 3 ./{{ exec_name }}
+      args:
+        chdir: ~/{{ root_folder }}/build
+      async: 3600 # Allow the task to run for up to 1 hour (3600 seconds)
+      poll: 0 # Don't poll immediately
+      register: mpc_output
+
+    - name: Wait for Experiment to complete
+      async_status:
+        jid: "{{ mpc_output.ansible_job_id }}"
+      register: job_result
+      until: job_result.finished
+      retries: 360 # Number of retries (360 retries * 10 seconds = 1 hour)
+      delay: 10 # Wait 10 seconds between each retry
+
+    - name: debug mpc_output
+      debug:
+        msg: "{{ mpc_output }}"

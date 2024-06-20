@@ -1,0 +1,83 @@
+########################################################
+- name: Asynchronously terminate cloud computing instances
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - vars.yaml
+
+  tasks:
+    #################### AWS ###########################
+    - name: Retrieve EC2 instance IDs by names
+      community.aws.ec2_instance:
+        name: "{{ aws_instance_name }}-{{ item }}"
+        region: "{{ aws_region }}"
+      register: aws_instance_infos
+      loop: "{{ range(1, aws_instance_num + 1)|list }}"
+
+    - name: Terminate the EC2 instances
+      community.aws.ec2_instance:
+        state: absent
+        instance_ids: "{{ item.instances[0].instance_id }}"
+        region: "{{ aws_region }}"
+      async: 240 # Run the task asynchronously for up to 120 seconds
+      poll: 0 # Do not wait for the task to finish
+      loop: "{{ aws_instance_infos.results }}"
+      when: item.instances | length > 0
+      register: aws_termination_results
+
+    #################### GCP ###########################
+    - name: Terminate the GCP VM instances
+      google.cloud.gcp_compute_instance:
+        state: absent
+        name: "{{ gcp_instance_name }}-{{ item }}"
+        zone: "{{ gcp_zone }}"
+        project: "{{ gcp_project }}"
+        auth_kind: serviceaccount
+        service_account_file: "{{ gcp_cred_file }}"
+      async: 240 # Run the task asynchronously for up to 240 seconds
+      poll: 0 # Do not wait for the task to finish
+      loop: "{{ range(1, gcp_instance_num + 1) | list }}"
+      register: gcp_termination_results
+
+    #################### Azure ###########################
+    - name: Terminate the Azure VM instances
+      azure.azcollection.azure_rm_virtualmachine:
+        resource_group: "{{ azure_resource_group }}"
+        name: "{{ azure_instance_name }}-{{ item }}"
+        state: absent
+      async: 240 # Run the task asynchronously for up to 240 seconds
+      poll: 0 # Do not wait for the task to finish
+      loop: "{{ range(1, azure_instance_num + 1) | list }}"
+      register: azure_vm_termination_results
+
+    #################### Chameleon ###########################
+    - name: Terminate Chameleon VM instances
+      openstack.cloud.server:
+        state: absent
+        name: "{{ chameleon_instance_name }}-{{ item }}"
+      async: 240 # Run the task asynchronously for up to 240 seconds
+      poll: 0 # Do not wait for the task to finish
+      loop: "{{ range(1, chameleon_instance_num + 1) | list }}"
+      register: chameleon_termination_results
+    #################### Check status ###########################
+    - name: Combine termination results if they exist
+      set_fact:
+        termination_results: >-
+          {{
+            (aws_termination_results.results if aws_termination_results is defined else [])
+            +
+            (gcp_termination_results.results if gcp_termination_results is defined else [])
+            +
+            (azure_vm_termination_results.results if azure_vm_termination_results is defined else [])
+            +
+            (chameleon_termination_results.results if chameleon_termination_results is defined else [])
+          }}
+
+    - name: Check status of asynchronous termination tasks
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      loop: "{{ termination_results }}"
+      register: termination_status
+      until: termination_status.finished
+      retries: 30
+      delay: 10 # Check every 10 seconds

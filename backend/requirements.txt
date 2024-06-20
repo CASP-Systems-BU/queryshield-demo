@@ -1,0 +1,12 @@
+Flask<2.3.0
+uuid
+requests
+boto3
+python-dotenv
+google-cloud-storage
+jinja2<3.1
+azure-storage-blob
+multiprocess
+firebase-admin
+psutil
+pickle5

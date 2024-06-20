@@ -1,0 +1,39 @@
+.navbar {
+	background-color: #e2ede4;
+	padding: 2vh;
+	font-size: 1.1rem;
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	z-index: 1000;
+	display: flex;
+	flex-direction: row;
+	height: 8vh;
+	justify-content: space-around;
+}
+
+.dropdownMenu {
+	position: absolute;
+}
+
+/* .navItem {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+    margin: 1rem 0;
+}
+
+.signout {
+    position: absolute;
+    bottom: 30px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.signoutIcon {
+    font-size: 24px;
+    margin-right: 0.5rem;
+} */

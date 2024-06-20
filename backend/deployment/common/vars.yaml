@@ -1,0 +1,87 @@
+# General configuration
+# job_id: job1  # job_id will be input by json
+checkpoint_file: "{{ log_dir }}/checkpoint" # used to track progress
+deployment_machine_public_key: "{{ lookup('file', '/home/ubuntu/.ssh/id_rsa.pub') }}"
+deployment_machine_private_key_file: /home/ubuntu/.ssh/id_rsa # every computing machines can be login by using this deployment machine's private key
+custom_startup_script: |
+  #!/bin/bash
+
+  # Check if user "tva" exists
+  if ! id "tva" &>/dev/null; then
+    # create new user "tva"
+    # because different cloud providers have different default username
+    adduser --disabled-password --gecos "" tva
+    # echo 'tva:password' | chpasswd
+    echo 'tva ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+    usermod -aG sudo tva
+  fi
+
+  # Create .ssh directory if it doesn't exist
+  mkdir -p /home/tva/.ssh
+  chown tva:tva /home/tva/.ssh
+  chmod 700 /home/tva/.ssh
+
+  # find the only user folder under /home
+  if [ ! -f "/home/tva/.ssh/authorized_keys" ]; then
+    default_user_dir=$(find /home -mindepth 1 -maxdepth 1 -type d -not -name "tva" -print -quit)
+    if [ -n "$default_user_dir" ] && [ -f "$default_user_dir/.ssh/authorized_keys" ]; then
+        cp "$default_user_dir/.ssh/authorized_keys" /home/tva/.ssh/
+        chown tva:tva /home/tva/.ssh/authorized_keys
+        chmod 700 /home/tva/.ssh
+    fi
+  fi
+
+  # Add provided public key to authorized_keys
+  echo "{{ deployment_machine_public_key }}" >> /home/tva/.ssh/authorized_keys
+  chown tva:tva /home/tva/.ssh/authorized_keys
+  chmod 600 /home/tva/.ssh/authorized_keys
+
+  # Generate SSH key pair for tva user if it doesn't exist
+  # This step should be executed at the end of this script, since the id_rsa.pub file is used to check if this startup script is completed or not.
+  if [ ! -f "/home/tva/.ssh/id_rsa" ]; then
+      sudo -u tva ssh-keygen -t rsa -b 2048 -f /home/tva/.ssh/id_rsa -q -N ""
+      chown tva:tva /home/tva/.ssh/id_rsa*
+  fi
+
+# AWS configuration
+# aws_instance_num: 0 # construct in deploy.sh
+aws_instance_name: "mpc-demo-{{ job_id }}-aws"
+aws_region: us-east-2
+aws_image: ami-077152c54dad38376 # queryshield-e2e-openmpi-4pc-6
+aws_instance_type: r5.xlarge
+aws_key_name: mpc-demo-key
+aws_security_group_id: sg-0dc81f04a10b96a56 # mpc-demo-allow-all-traffic
+aws_ssh_private_key_file: /home/ubuntu/queryshield-demo-private/backend/credentials/mpc-demo-key.pem
+
+# GCP configuration
+# gcp_instance_num: 0 # construct in deploy.sh
+gcp_instance_name: "mpc-demo-{{ job_id }}-gcp"
+gcp_project: secrecy-326917 # project id
+gcp_zone: us-east1-b
+gcp_image: projects/secrecy-326917/global/images/queryshield-e2e-openmpi-3 # queryshield-e2e-openmpi-3
+# gcp_machine_type: n2-highmem-4
+gcp_machine_type: n2-highmem-2
+gcp_cred_file: /home/ubuntu/queryshield-demo-private/backend/credentials/secrecy-326917-a04b0e5509fc.json
+gcp_ssh_public_key: "{{ deployment_machine_public_key }}" # use the same ssh key as the deployment machine
+
+# Azure configuration
+# azure_instance_num: 0 # construct in deploy.sh
+azure_instance_name: "mpc-demo-{{ job_id }}-azure"
+azure_pip_name: "mpc-demo-pip-{{ job_id }}"
+azure_nic_name: "mpc-demo-nic-{{ job_id }}"
+azure_security_group: "allowAllTraffic"
+azure_resource_group: mpc-demo
+azure_location: "eastus"
+azure_vm_size: "Standard_D2s_v3"
+azure_subscription_id: "1343c35b-954b-447a-b244-aaaa6905b5a7"
+azure_image_name: "queryshield-e2e-openmpi"
+azure_image_version: "0.0.4"
+
+# Chameleon configuration
+# chameleon_instance_num: 0 # construct in deploy.sh
+chameleon_instance_name: "mpc-demo-{{ job_id }}-chameleon"
+chameleon_image: queryshield-e2e-openmpi
+chameleon_instance_flavor: m1.large
+chameleon_network: sharednet1
+chameleon_key_name: queryshield-deploy2
+chameleon_security_group: mpc-demo-allow-all-traffic

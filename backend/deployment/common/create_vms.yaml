@@ -1,0 +1,341 @@
+########################################################
+- name: Asynchronously create and manage AWS and GCP VMs
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - vars.yaml
+
+  tasks:
+    - name: Create AWS EC2 instances
+      community.aws.ec2_instance:
+        name: "{{ aws_instance_name }}-{{ item }}"
+        region: "{{ aws_region }}"
+        image_id: "{{ aws_image }}"
+        instance_type: "{{ aws_instance_type }}"
+        key_name: "{{ aws_key_name }}"
+        security_groups:
+          - "{{ aws_security_group_id }}"
+        user_data: "{{ custom_startup_script }}"
+        wait: no # Asynchronous operation
+        volumes:
+          - device_name: /dev/sda1
+            ebs:
+              volume_size: 32
+              delete_on_termination: true
+      register: aws_instances
+      async: 600
+      poll: 0
+      loop: "{{ range(1, aws_instance_num + 1)|list }}"
+
+    - name: Create GCP VM instances
+      google.cloud.gcp_compute_instance:
+        name: "{{ gcp_instance_name }}-{{ item }}"
+        machine_type: "{{ gcp_machine_type }}"
+        disks:
+          - auto_delete: true
+            boot: true
+            initialize_params:
+              source_image: "{{ gcp_image }}"
+        network_interfaces:
+          - network:
+              # selfLink: "projects/{{ gcp_project }}/global/networks/queryshield-network"
+              selfLink: "projects/{{ gcp_project }}/global/networks/queryshield-network2"
+            subnetwork:
+              # selfLink: "projects/{{ gcp_project }}/regions/us-east1/subnetworks/queryshield-subnet"  # has VPN with AWS and GCP
+              selfLink: "projects/{{ gcp_project }}/regions/us-east1/subnetworks/queryshield-vpc2-subnet" # the one doesn't have VPN with AWS and GCP
+            access_configs:
+              - name: External NAT
+                # nat_ip: auto
+                type: ONE_TO_ONE_NAT
+        zone: "{{ gcp_zone }}"
+        project: "{{ gcp_project }}"
+        auth_kind: serviceaccount
+        service_account_file: "{{ gcp_cred_file }}"
+        metadata:
+          startup-script: "{{ custom_startup_script }}"
+          ssh-keys: "tva:{{ gcp_ssh_public_key }}"
+        state: present
+        # wait: no  # Asynchronous operation
+      register: gcp_instances
+      async: 600
+      poll: 0
+      loop: "{{ range(1, gcp_instance_num + 1)|list }}"
+
+    - name: Create Azure Public IPs
+      azure_rm_publicipaddress:
+        resource_group: "{{ azure_resource_group }}"
+        allocation_method: Static
+        name: "{{ azure_pip_name }}-{{ item }}"
+        location: "{{ azure_location }}"
+      loop: "{{ range(1, azure_instance_num + 1) | list }}"
+
+    - name: Create Azure Network Interfaces
+      azure_rm_networkinterface:
+        resource_group: "{{ azure_resource_group }}"
+        name: "{{ azure_nic_name }}-{{ item }}"
+        # virtual_network_name: "queryshield-vpc"
+        virtual_network_name: "queryshield-vpc2" # no VPN
+        subnet_name: "default"
+        public_ip_name: "{{ azure_pip_name }}-{{ item }}"
+        location: "{{ azure_location }}"
+        security_group: "/subscriptions/1343c35b-954b-447a-b244-aaaa6905b5a7/resourceGroups/mpc-demo/providers/Microsoft.Network/networkSecurityGroups/{{ azure_security_group }}"
+      loop: "{{ range(1, azure_instance_num + 1) | list }}"
+
+    - name: Unmount the managed disk to VM
+      azure_rm_manageddisk:
+        name: "{{ azure_instance_name }}-{{ item }}"
+        location: "{{ azure_location }}"
+        resource_group: "{{ azure_resource_group }}"
+        managed_by: ""
+        disk_size_gb: 30
+      loop: "{{ range(1, azure_instance_num + 1)|list }}"
+
+    - name: Delete managed disk
+      azure_rm_manageddisk:
+        name: "{{ azure_instance_name }}-{{ item }}"
+        location: "{{ azure_location }}"
+        resource_group: "{{ azure_resource_group }}"
+        state: absent
+      loop: "{{ range(1, azure_instance_num + 1)|list }}"
+
+    - name: Create Azure VM instances
+      azure_rm_virtualmachine:
+        resource_group: "{{ azure_resource_group }}"
+        name: "{{ azure_instance_name }}-{{ item }}"
+        location: "{{ azure_location }}"
+        admin_username: tva
+        ssh_password_enabled: false
+        ssh_public_keys:
+          - path: "/home/tva/.ssh/authorized_keys"
+            key_data: " {{ gcp_ssh_public_key }}"
+        vm_size: "{{ azure_vm_size }}"
+        managed_disk_type: Standard_LRS
+        network_interfaces: "{{ azure_nic_name }}-{{ item }}"
+        image:
+          id: "/subscriptions/{{ azure_subscription_id }}/resourceGroups/{{ azure_resource_group }}/providers/Microsoft.Compute/galleries/mpc_demo_gallery/images/{{ azure_image_name }}/versions/{{ azure_image_version }}"
+        security_profile:
+          security_type: "TrustedLaunch"
+        os_disk_caching: ReadWrite
+        os_type: Linux
+        custom_data: "{{ custom_startup_script }}"
+        tags:
+          role: "vm"
+      register: azure_instances
+      async: 600
+      poll: 0
+      loop: "{{ range(1, azure_instance_num + 1)|list }}"
+
+    - name: Create Chameleon VM instances
+      openstack.cloud.server:
+        state: present
+        name: "{{ chameleon_instance_name }}-{{ item }}"
+        image: "{{ chameleon_image }}"
+        flavor: "{{ chameleon_instance_flavor }}"
+        network: "{{ chameleon_network }}"
+        key_name: "{{ chameleon_key_name }}"
+        security_groups: "{{ chameleon_security_group }}"
+        userdata: "{{ custom_startup_script }}"
+        volumes: []
+        wait: yes
+      register: chameleon_instances
+      async: 600
+      poll: 0
+      loop: "{{ range(1, chameleon_instance_num + 1)|list }}"
+
+    ###############################################################
+
+    - name: "Wait for AWS VMs initialization"
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: aws_instance_status
+      until: aws_instance_status.finished
+      retries: 60
+      delay: 10
+      loop: "{{aws_instances.results | list}}"
+
+    - name: "Wait for GCP VM initialization"
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: gcp_instance_status
+      until: gcp_instance_status.finished
+      retries: 60
+      delay: 10
+      loop: "{{gcp_instances.results | list}}"
+
+    - name: "Wait for Azure VM initialization"
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: azure_instance_status
+      until: azure_instance_status.finished
+      retries: 60
+      delay: 10
+      loop: "{{azure_instances.results | list}}"
+
+    - name: "Wait for Chameleon VM initialization"
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: chameleon_instance_status
+      until: chameleon_instance_status.finished
+      retries: 60
+      delay: 10
+      loop: "{{chameleon_instances.results | list}}"
+
+    # ... Subsequent tasks like collecting machine information and adding to host ...
+    - name: Collecting AWS machines information
+      community.aws.ec2_instance:
+        name: "{{ aws_instance_name }}-{{ item }}"
+        region: "{{ aws_region }}"
+      register: aws_instance_infos
+      loop: "{{ range(1, aws_instance_num + 1)|list }}"
+
+    - name: Add AWS machines to host
+      add_host:
+        name: "{{ item.instances[0]['public_ip_address'] }}"
+        groups:
+          - aws_cluster
+          - cluster
+          - machine_{{idx+1}}_host
+      loop: "{{ aws_instance_infos.results | list }}"
+      loop_control:
+        index_var: idx
+
+    - name: Collect IP addresses from AWS instances
+      set_fact:
+        aws_hosts: "{{ aws_hosts | default([]) + [item.instances[0]['public_ip_address']] }}"
+        combined_hosts: "{{ combined_hosts | default([]) + [item.instances[0]['public_ip_address']] }}"
+        public_private_ips: "{{ public_private_ips | default([]) + [{'public_ip': item.instances[0]['public_ip_address'], 'private_ip': item.instances[0]['private_ip_address']}] }}"
+      loop: "{{ aws_instance_infos.results | list }}"
+
+    - name: Collecting GCP machine information
+      google.cloud.gcp_compute_instance_info:
+        zone: "{{ gcp_zone }}"
+        project: "{{ gcp_project }}"
+        auth_kind: serviceaccount
+        service_account_file: "{{ gcp_cred_file }}"
+        filters:
+          - name = "{{ gcp_instance_name }}-{{ item }}"
+      register: gcp_instance_infos
+      loop: "{{ range(1, gcp_instance_num + 1)|list }}"
+
+    - name: Add GCP machines to host
+      add_host:
+        name: "{{ item.resources[0]['networkInterfaces'][0]['accessConfigs'][0]['natIP'] }}"
+        groups:
+          - gcp_cluster
+          - cluster
+          - machine_{{idx+aws_instance_num+1}}_host
+      loop: "{{ gcp_instance_infos.results | list }}"
+      loop_control:
+        index_var: idx
+
+    - name: Collect IP addresses from GCP instances
+      set_fact:
+        gcp_hosts: "{{ gcp_hosts | default([]) + [item.resources[0]['networkInterfaces'][0]['accessConfigs'][0]['natIP']] }}"
+        combined_hosts: "{{ combined_hosts | default([]) + [item.resources[0]['networkInterfaces'][0]['accessConfigs'][0]['natIP']] }}"
+        public_private_ips: "{{ public_private_ips | default([]) + [{'public_ip': item.resources[0]['networkInterfaces'][0]['accessConfigs'][0]['natIP'], 'private_ip': item.resources[0]['networkInterfaces'][0]['networkIP']}] }}"
+      loop: "{{ gcp_instance_infos.results | list }}"
+
+    - name: List public IP addresses in an Azure resource group
+      azure_rm_publicipaddress_info:
+        resource_group: "{{ azure_resource_group }}"
+      register: public_ips
+
+    - name: Filter public IP addresses to select those with tag role:vm and exclude null tags
+      set_fact:
+        vm_public_ips: "{{ public_ips.publicipaddresses | selectattr('name', 'search',  azure_pip_name) | list }}"
+
+    - name: Add Azure machines to host
+      add_host:
+        name: "{{ item.ip_address }}"
+        groups:
+          - azure_cluster
+          - cluster
+          - machine_{{idx+aws_instance_num+gcp_instance_num+1}}_host
+      loop: "{{ vm_public_ips }}"
+      loop_control:
+        index_var: idx
+      when: item.ip_address is defined and item.ip_address
+
+    - name: Collect IP addresses from Azure instances
+      set_fact:
+        azure_hosts: "{{ azure_hosts | default([]) + [item.ip_address] }}"
+        combined_hosts: "{{ combined_hosts | default([]) + [item.ip_address] }}"
+      loop: "{{ vm_public_ips }}"
+      when: item.ip_address is defined and item.ip_address
+
+    - name: Get network interface details
+      azure_rm_networkinterface_facts:
+        resource_group: "{{ azure_resource_group }}"
+        name: "{{ azure_nic_name }}-{{ item }}"
+      register: azure_networkinterfaces
+      loop: "{{ range(1, azure_instance_num + 1) | list }}"
+
+    - name: Extract Azure private IP addresses using multiple map filters
+      set_fact:
+        azure_private_ips: "{{ azure_networkinterfaces.results | map(attribute='ansible_facts.azure_networkinterfaces') | map('first') | map(attribute='ip_configurations') | map('first') | map(attribute='private_ip_address') | list }}"
+
+    - name: Add Azure machines to public_private_ips
+      set_fact:
+        public_private_ips: "{{ public_private_ips | default([]) + [{'public_ip': item.0.ip_address, 'private_ip': item.1}] }}"
+      with_together:
+        - "{{ vm_public_ips | list }}"
+        - "{{azure_private_ips | list }}"
+
+    - name: Collecting Chameleon machine information
+      openstack.cloud.server_info:
+        name: "{{ chameleon_instance_name }}-{{ item }}"
+      register: chameleon_instance_info
+      loop: "{{ range(1, chameleon_instance_num + 1) | list }}"
+
+    - name: Add Chameleon machine info to host
+      add_host:
+        name: "{{ item.servers[0].access_ipv4 }}"
+        groups:
+          - chameleon_cluster
+          - cluster
+          - machine_{{ idx+aws_instance_num+gcp_instance_num+azure_instance_num+1 }}_host
+      loop: "{{ chameleon_instance_info.results | list }}"
+      loop_control:
+        index_var: idx
+
+    - name: Collect IP addresses from Chameleon instances
+      set_fact:
+        chameleon_hosts: "{{ chameleon_hosts | default([]) + [item.servers[0].access_ipv4] }}"
+        combined_hosts: "{{ combined_hosts | default([]) + [item.servers[0].access_ipv4] }}"
+        public_private_ips: "{{ public_private_ips | default([]) + [{'public_ip': item.servers[0].access_ipv4, 'private_ip': item.servers[0].addresses.sharednet1 | selectattr('OS-EXT-IPS:type', 'equalto', 'fixed') | map(attribute='addr') | first}] }}"
+      loop: "{{ chameleon_instance_info.results | list }}"
+
+    - name: Delete old hosts file
+      file:
+        path: ../common/hosts_file_tva
+        state: absent
+
+    - name: Ensure the directory exists
+      file:
+        path: "../tmp_config/{{ job_id }}"
+        state: directory
+        mode: "0777"
+      become: yes
+
+    - name: Create new hosts file template
+      template:
+        src: ../common/hosts_file_temp
+        dest: ../tmp_config/{{ job_id }}/hosts_file_tva
+      become: yes
+
+    - name: Add combined machines to hosts file
+      lineinfile:
+        path: "../tmp_config/{{ job_id }}/hosts_file_tva"
+        line: "{{ item }} machine-{{ idx+1 }} machine-wan-{{ idx+1 }}"
+        create: yes
+      loop: "{{ combined_hosts }}"
+      loop_control:
+        index_var: idx
+
+    - name: Wait for VMs' SSH to become available
+      wait_for:
+        host: "{{ item }}"
+        port: 22
+        sleep: 3 # check every 3 seconds
+        timeout: 300
+      loop: "{{ combined_hosts }}"

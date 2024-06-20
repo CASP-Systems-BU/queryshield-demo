@@ -1,0 +1,268 @@
+##################################################
+- name: Prepare Temp Authorized_keys File
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    # - name: Delete old authorized_keys file
+    #   file:
+    #     path: ../common/authorized_keys
+    #     state: absent
+
+    - name: Create new authorized_keys file template
+      template:
+        src: ../common/authorized_keys_temp
+        dest: ../tmp_config/{{ job_id }}/authorized_keys
+      become: yes
+
+##################################################
+- name: Get SSH Public Keys From AWS machines
+  hosts: aws_cluster
+  gather_facts: no
+  remote_user: tva
+  vars_files:
+    - vars.yaml
+  vars:
+    ansible_ssh_private_key_file: "{{ aws_ssh_private_key_file }}"
+
+  tasks:
+    - name: Wait for user-data script finished
+      pause:
+        seconds: 15
+
+    - name: Retrieve SSH public key from each machine
+      shell: cat ~/.ssh/id_rsa.pub
+      register: ssh_pub_key
+      until: ssh_pub_key.stdout != ""
+      retries: 3
+      delay: 20
+      failed_when: ssh_pub_key.stdout == ""
+
+    - name: Add SSH public key to localhost's authorized_keys
+      lineinfile:
+        path: ../tmp_config/{{ job_id }}/authorized_keys
+        line: "{{ ssh_pub_key.stdout }}"
+        create: yes
+      delegate_to: localhost
+      become: no
+
+##################################################
+- name: Get SSH Public Keys From GCP, Azure, and Chameleon machines
+  hosts: "{{ groups['gcp_cluster'] | default([]) + groups['azure_cluster'] | default([]) + groups['chameleon_cluster'] | default([]) }}"
+  gather_facts: no
+  remote_user: tva
+  vars_files:
+    - vars.yaml
+  vars:
+    ansible_ssh_private_key_file: "{{ deployment_machine_private_key_file }}"
+
+  tasks:
+    - name: Retrieve SSH public key from each machine
+      shell: cat ~/.ssh/id_rsa.pub
+      register: ssh_pub_key
+      until: ssh_pub_key.stdout != ""
+      retries: 3
+      delay: 20
+      failed_when: ssh_pub_key.stdout == ""
+
+    - name: Add SSH public key to localhost's authorized_keys
+      lineinfile:
+        path: ../tmp_config/{{ job_id }}/authorized_keys
+        line: "{{ ssh_pub_key.stdout }}"
+        create: yes
+      delegate_to: localhost
+      become: no
+
+##################################################
+- name: Distribute Auth Files To AWS machines
+  hosts: aws_cluster
+  gather_facts: no
+  remote_user: tva
+  vars_files:
+    - vars.yaml
+  vars:
+    ansible_ssh_private_key_file: "{{ aws_ssh_private_key_file }}"
+    authorized_keys_file: "../tmp_config/{{ job_id }}/authorized_keys"
+
+  tasks:
+    # - name: Wait for user-data script finished
+    #   pause:
+    #     seconds: 30
+    - name: Read local authorized_keys file
+      slurp:
+        src: "{{ authorized_keys_file }}"
+      register: local_authorized_keys
+      delegate_to: localhost
+      run_once: true
+
+    - name: Append public keys to remote authorized_keys
+      lineinfile:
+        path: ~/.ssh/authorized_keys
+        line: "{{ item }}"
+        state: present
+        create: yes
+      loop: "{{ (local_authorized_keys['content'] | b64decode).split('\n') }}"
+      when: local_authorized_keys['content'] | b64decode
+
+    - name: Add StrictHostKeyChecking=no to ssh config
+      copy:
+        src: ../common/config
+        dest: ~/.ssh/config
+        owner: tva
+        mode: u=rw,g=r,o=r
+      vars:
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+      # become: yes
+      register: task_result
+      until: task_result is succeeded
+      retries: 3
+      delay: 30
+
+    - name: Add hosts file to cluster
+      copy:
+        src: ../tmp_config/{{ job_id }}/hosts_file_tva
+        dest: /etc/hosts
+      become: yes
+
+###############################################################
+- name: Distribute Auth Files To GCP, Azure, and Chameleon machines
+  hosts: "{{ groups['gcp_cluster'] | default([]) + groups['azure_cluster'] | default([]) + groups['chameleon_cluster'] | default([]) }}"
+  gather_facts: no
+  remote_user: tva
+  vars_files:
+    - vars.yaml
+  vars:
+    ansible_ssh_private_key_file: "{{ deployment_machine_private_key_file }}"
+    authorized_keys_file: "../tmp_config/{{ job_id }}/authorized_keys"
+
+  tasks:
+    - name: Read local authorized_keys file
+      slurp:
+        src: "{{ authorized_keys_file }}"
+      register: local_authorized_keys
+      delegate_to: localhost
+      run_once: true
+
+    - name: Append public keys to remote authorized_keys
+      lineinfile:
+        path: ~/.ssh/authorized_keys
+        line: "{{ item }}"
+        state: present
+        create: yes
+      loop: "{{ (local_authorized_keys['content'] | b64decode).split('\n') }}"
+      when: local_authorized_keys['content'] | b64decode
+
+    - name: Add StrictHostKeyChecking=no to ssh config
+      copy:
+        src: ../common/config
+        dest: ~/.ssh/config
+        owner: tva
+        mode: u=rw,g=r,o=r
+      vars:
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+      register: task_result
+      until: task_result is succeeded
+      retries: 3
+      delay: 30
+
+    - name: Add hosts file to cluster
+      copy:
+        src: ../tmp_config/{{ job_id }}/hosts_file_tva
+        dest: /etc/hosts
+      become: yes
+
+##################################################
+- name: Change hostnames for machines
+  hosts: localhost
+  tasks:
+    - name: Change hostnames for machines
+      shell: ssh -o StrictHostKeyChecking=no tva@{{item}} "sudo hostnamectl set-hostname machine-wan-{{idx+1}}"
+      loop: "{{ combined_hosts }}"
+      loop_control:
+        index_var: idx
+
+    - name: Set sequence number as environment variable for aws machines
+      shell: >
+        ssh -o StrictHostKeyChecking=no tva@{{ item }} "echo 'export SEQ_NUM={{ idx }}' | sudo tee -a /etc/environment && echo 'export CLOUD=aws' | sudo tee -a /etc/environment"
+      loop: "{{ aws_hosts }}"
+      loop_control:
+        index_var: idx
+      when: aws_hosts is defined
+
+    - name: Set sequence number as environment variable for gcp machines
+      shell: >
+        ssh -o StrictHostKeyChecking=no tva@{{ item }} "echo 'export SEQ_NUM={{ idx }}' | sudo tee -a /etc/environment && echo 'export CLOUD=gcp' | sudo tee -a /etc/environment"
+      loop: "{{ gcp_hosts }}"
+      loop_control:
+        index_var: idx
+      when: gcp_hosts is defined
+
+    - name: Set sequence number as environment variable for azure machines
+      shell: >
+        ssh -o StrictHostKeyChecking=no tva@{{ item }} "echo 'export SEQ_NUM={{ idx }}' | sudo tee -a /etc/environment && echo 'export CLOUD=azure' | sudo tee -a /etc/environment"
+      loop: "{{ azure_hosts }}"
+      loop_control:
+        index_var: idx
+      when: azure_hosts is defined
+
+    - name: Set sequence number as environment variable for chameleon machines
+      shell: >
+        ssh -o StrictHostKeyChecking=no tva@{{ item }} "echo 'export SEQ_NUM={{ idx }}' | sudo tee -a /etc/environment && echo 'export CLOUD=chameleon' | sudo tee -a /etc/environment"
+      loop: "{{ chameleon_hosts }}"
+      loop_control:
+        index_var: idx
+      when: chameleon_hosts is defined
+
+######################################################
+# NOTE: Configuring the firewall rules should be ran before Configuring the NAT rules, since the firewall-cmd will override the NAT rules set by iptables.
+- name: Configure Chameleon firewall rules
+  hosts: chameleon_cluster
+  remote_user: tva
+  gather_facts: no
+
+  tasks:
+    - name: Add firewall rule to open all TCP ports
+      shell: firewall-cmd --permanent --add-port=1-65535/tcp
+      become: yes
+
+    - name: Reload firewalld to apply the new rules
+      shell: firewall-cmd --reload
+      become: yes
+
+# setup iptables routing
+- name: Configure NAT rules using iptables
+  hosts: cluster
+  remote_user: tva
+  gather_facts: no
+
+  tasks:
+    - name: Fetch public_private_ips fact from localhost
+      set_fact:
+        public_private_ips: "{{ (hostvars['localhost']['public_private_ips'] | default([])) }}"
+
+    # - name: Ensure iptables-persistent is installed on remote servers
+    #   apt:
+    #     name: iptables-persistent
+    #     state: present
+    #   become: yes
+
+    - name: Add OUTPUT rules to redirect traffic from private to public IP
+      iptables:
+        chain: OUTPUT
+        table: nat
+        protocol: all
+        jump: DNAT
+        to_destination: "{{ item.public_ip }}"
+        destination: "{{ item.private_ip }}"
+      loop: "{{ public_private_ips }}"
+      become: yes
+
+    - name: Save iptables rules on remote servers
+      shell: iptables-save > /etc/iptables/rules.v4
+      become: yes
+
+    - name: Ensure iptables rules are reloaded on remote servers
+      service:
+        name: netfilter-persistent
+        state: restarted
+      become: yes

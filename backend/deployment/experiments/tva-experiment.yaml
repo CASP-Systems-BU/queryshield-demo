@@ -1,0 +1,37 @@
+- name: Running TVA on Node 1
+  hosts: machine_1_host
+  remote_user: tva
+  vars:
+    exec_name: "credit_score"
+    root_folder: secrecy-private
+    ROWS: 1024
+
+  tasks:
+    # - name: Build Experiment Executable
+    #   shell: bash ./build_experiments.sh semi wan > build_exp.log
+    #   args:
+    #     chdir: ~/tva/scripts
+
+    - name: Run Credit Score Test
+      shell: |
+        mpirun --host machine-wan-1,machine-wan-2,machine-wan-3 -np 3 ./{{ exec_name }} > {{exec_name}}.txt
+        cat {{exec_name}}.txt
+      args:
+        chdir: ~/{{ root_folder }}/build
+      register: mpc_output
+
+    - name: debug mpc_output
+      debug:
+        msg: "{{ mpc_output }}"
+
+    # - name: Print test results
+    #   debug:
+    #     msg: "{{item.stdout}}"
+    #   loop: "{{mpc_output['stdout_lines']}}"
+    #   loop_control:
+    #     label: " "
+
+    - name: Copy results file to local machine
+      fetch:
+        src: ~/{{ root_folder }}/build/{{exec_name}}.txt
+        dest: ../results/{{ job_id }}

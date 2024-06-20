@@ -1,0 +1,12 @@
+.env
+venv
+__pycache__
+logs
+firebase-service-account.json
+credentials
+test*
+tmp_config
+results
+jobs.json
+*.log
+example-data

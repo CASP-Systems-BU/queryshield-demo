@@ -1,0 +1,188 @@
+#################### create_vms ########################
+- name: Checkpointing
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - vars.yaml
+  tasks:
+    - name: Checkpoint before creating VMs
+      lineinfile:
+        path: "{{ checkpoint_file }}"
+        line: "Creating VMs"
+        create: yes
+
+- import_playbook: create_vms.yaml
+
+- name: Checkpointing
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - vars.yaml
+  tasks:
+    - name: Checkpoint after creating VMs
+      lineinfile:
+        path: "{{ checkpoint_file }}"
+        line: "VMs Created"
+        create: yes
+
+#################### auth_setup ########################
+- name: Checkpointing
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - vars.yaml
+  tasks:
+    - name: Checkpoint before authentication setup
+      lineinfile:
+        path: "{{ checkpoint_file }}"
+        line: "Setting Up Authentication"
+        create: yes
+
+- import_playbook: auth_setup.yaml
+
+- name: Checkpointing
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - vars.yaml
+  tasks:
+    - name: Checkpoint after authentication setup
+      lineinfile:
+        path: "{{ checkpoint_file }}"
+        line: "Finished Authentication Setup"
+        create: yes
+
+#################### deploy_agent ##############
+- name: Checkpointing
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - vars.yaml
+  tasks:
+    - name: Checkpoint before deploying agent
+      lineinfile:
+        path: "{{ checkpoint_file }}"
+        line: "Deploying Agent"
+        create: yes
+
+- import_playbook: agent_deploy.yaml
+
+- name: Checkpointing
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - vars.yaml
+  tasks:
+    - name: Checkpoint after deploying agent
+      lineinfile:
+        path: "{{ checkpoint_file }}"
+        line: "Finished Agent Deployment"
+        create: yes
+
+#################### prepare_shares #######################
+- name: Checkpointing
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - vars.yaml
+  tasks:
+    - name: Checkpoint before downloading input secret shares
+      lineinfile:
+        path: "{{ checkpoint_file }}"
+        line: "Preparing Input Secret Shares"
+        create: yes
+
+- import_playbook: agent_download_shares.yaml
+
+- name: Checkpointing
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - vars.yaml
+  tasks:
+    - name: Checkpoint after downloading input secret shares
+      lineinfile:
+        path: "{{ checkpoint_file }}"
+        line: "Input Secret Shares Prepared"
+        create: yes
+
+#################### execute_tasks #######################
+- name: Checkpointing
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - vars.yaml
+  tasks:
+    - name: Checkpoint before running experiment
+      lineinfile:
+        path: "{{ checkpoint_file }}"
+        line: "Running Experiment"
+        create: yes
+
+- import_playbook: "{{ exp_name }}"
+
+- name: Checkpointing
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - vars.yaml
+  tasks:
+    - name: Checkpoint after running experiment
+      lineinfile:
+        path: "{{ checkpoint_file }}"
+        line: "Experiment Finished"
+        create: yes
+
+#################### upload_results #######################
+- name: Checkpointing
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - vars.yaml
+  tasks:
+    - name: Checkpoint before uploading result secret shares
+      lineinfile:
+        path: "{{ checkpoint_file }}"
+        line: "Exporting Result Secret Shares"
+        create: yes
+
+- import_playbook: agent_upload_results.yaml
+
+- name: Checkpointing
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - vars.yaml
+  tasks:
+    - name: Checkpoint after uploading result secret shares
+      lineinfile:
+        path: "{{ checkpoint_file }}"
+        line: "Result Secret Shares Exported"
+        create: yes
+
+#################### delete_resources #######################
+- name: Checkpointing
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - vars.yaml
+  tasks:
+    - name: Checkpoint before terminating computing resources
+      lineinfile:
+        path: "{{ checkpoint_file }}"
+        line: "Terminating compute resources"
+        create: yes
+
+- import_playbook: delete_vms.yaml
+
+- name: Checkpointing
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - vars.yaml
+  tasks:
+    - name: Checkpoint for SUCCESS
+      lineinfile:
+        path: "{{ checkpoint_file }}"
+        line: "Success"
+        create: yes

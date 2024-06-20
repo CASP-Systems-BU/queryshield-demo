@@ -1,0 +1,15 @@
+########################################################
+- name: Start Deploying Agent
+  hosts: cluster
+  gather_facts: no
+  remote_user: tva
+  vars_files:
+    - vars.yaml
+
+  tasks:
+    - name: Copy agent.py to remote
+      copy:
+        src: ../agent/agent.py
+        dest: ~/agent.py
+        owner: tva
+        mode: u=rw,g=r,o=r

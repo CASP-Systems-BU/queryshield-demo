@@ -1,0 +1,44 @@
+{
+	"name": "tva_frontend",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "vite build",
+		"lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+		"preview": "vite preview"
+	},
+	"dependencies": {
+		"@fortune-sheet/react": "^0.19.0",
+		"axios": "^1.6.0",
+		"bootstrap": "^5.3.2",
+		"chart.js": "^4.4.3",
+		"danfojs": "^1.1.2",
+		"firebase": "^10.11.1",
+		"js-cookie": "^3.0.5",
+		"js-sql-parser": "^1.5.0",
+		"jspreadsheet-ce": "4.6.2",
+		"math.js": "^1.1.46",
+		"mathjs": "^12.3.0",
+		"react": "^18.2.0",
+		"react-bootstrap": "^2.9.1",
+		"react-dom": "^18.2.0",
+		"react-icons": "^4.11.0",
+		"react-loader-spinner": "^6.1.6",
+		"react-router-dom": "^6.17.0",
+		"scheduler": "^0.23.0"
+	},
+	"devDependencies": {
+		"@types/firebase": "^3.2.1",
+		"@types/react": "^18.2.15",
+		"@types/react-dom": "^18.2.7",
+		"@vitejs/plugin-react": "^4.0.3",
+		"dotenv": "^16.3.1",
+		"eslint": "^8.45.0",
+		"eslint-plugin-react": "^7.32.2",
+		"eslint-plugin-react-hooks": "^4.6.0",
+		"eslint-plugin-react-refresh": "^0.4.3",
+		"vite": "^4.4.5"
+	}
+}
